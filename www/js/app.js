@@ -33,8 +33,15 @@ angular.module("starter", ["ionic", "firebase"])
     url: '/signup',
     templateUrl: 'templates/signup.html',
     controller: 'LoginCtrl'
-  })
-  .state('signin', {
+  }).state('chat', {
+  url: '/chat',
+  templateUrl: 'templates/chat.html',
+  controller: 'ChatCtrl'
+  }).state('room', {
+    url: '/room',
+    templateUrl: 'templates/room.html',
+    controller: 'RoomCtrl'
+}).state('signin', {
     url: '/signin',
     templateUrl: 'templates/signin.html',
     controller: 'LoginCtrl'
@@ -42,7 +49,44 @@ angular.module("starter", ["ionic", "firebase"])
 
   $urlRouterProvider.otherwise("/");
 
-}).controller('LoginCtrl', function($scope, $state, $firebaseAuth) {
+}).factory('Messages', function($firebaseArray) {
+  var ref = firebase.database().ref();
+  return $firebaseArray(ref);
+}).factory('Users', function ($firebaseArray) {
+    // Might use a resource here that returns a JSON array
+    var ref = firebase.database().ref();
+    //var users = $firebaseArray(ref.child('users')).$asArray();
+    var users = firebase.database().list('/items');
+    return {
+        all: function () {
+            return users;
+        },
+        get: function (userId) {
+            // Simple index lookup
+            return users.$getRecord(userId);
+        },
+        create: function () {
+          return $firebaseArray(ref);
+        }
+    }
+}).controller('ChatCtrl', function($scope, $state, $ionicPopup, Messages,  $firebaseAuth) {
+  $scope.messages = Messages;
+  $scope.addMessage = function() {
+   $ionicPopup.prompt({
+     title: 'Need to get something off your chest?',
+     template: 'Let everybody know!'
+   }).then(function(res) {
+      $scope.messages.$add({
+        "messages": res
+      });
+   });
+  };
+  $scope.logout = function() {
+    var ref = $firebaseAuth();
+    ref.$signOut();
+    $state.go('login');
+  };
+}).controller('LoginCtrl', function($scope, $state, $firebaseAuth, Users) {
   $scope.data = {
     username: '',
     email: '',
@@ -51,33 +95,35 @@ angular.module("starter", ["ionic", "firebase"])
   $scope.signupEmail = function(){
     $scope.message = null;
     $scope.error = null;
-
-    console.log('In signup email with username ' +  $scope.data.username + ' email ' + $scope.data.email + ' and password ' + $scope.data.password);
-    var chatRef = new Firebase('https://chat-test-ionic.firebaseio.com');
-    var auth = $firebaseAuth(chatRef);
-    auth.$createUser({
-      email: $scope.data.email,
-      password: $scope.data.password
-    }).then(function(userData) {
-        console.log("User created with uid: " + userData.uid);
-        $scope.message = "User created with uid: " + userData.uid;
-      }).catch(function(error) {
-        console.log("Error: " + error);
-        $scope.error = error;
+    var auth = $firebaseAuth();
+    auth.$createUserWithEmailAndPassword($scope.data.email, $scope.data.password)
+    .then(function(firebaseUser) {
+      console.log("User " + firebaseUser.uid + " created successfully!");
+      $scope.users = Users;
+      $scope.users.create().$add({
+        "users": {id: firebaseUser.uid, email: firebaseUser.email }
       });
+    }).catch(function(error) {
+      console.error("Error: ", error);
+    });
 
   };
-
-
     $scope.loginEmail = function() {
-      $scope.authData = null;
-      $scope.error = null;
+      var auth = $firebaseAuth();
 
-      auth.$authAnonymously().then(function(authData) {
-        $scope.authData = authData;
+    //  auth.$signInWithEmailAndPassword($scope.data.email, $scope.data.password).then(function(firebaseUser) {
+    auth.$signInWithEmailAndPassword('patito@gmail.com', 'patito').then(function(firebaseUser) {
+       $state.go('room');
       }).catch(function(error) {
-        $scope.error = error;
+       console.error("Authentication failed:", error);
       });
     };
-
+}).controller('RoomCtrl', function ($scope, Users, $state) {
+    //console.log("Rooms Controller initialized");
+    $scope.rooms = Users.all();
+    $scope.openChatRoom = function (userId) {
+        $state.go('chat', {
+            userId: userId
+        });
+    }
 });
